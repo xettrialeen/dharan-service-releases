@@ -1,0 +1,92 @@
+name: Build and Release Dharan Service
+
+on:
+  repository_dispatch:
+    types: [build-dharan-service]
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: 'Source repository (owner/repo)'
+        required: true
+        default: 'xettrialeen/dharan_service_dev'
+      version:
+        description: 'Release version'
+        required: true
+        default: '1.0.0'
+      notes:
+        description: 'Release notes'
+        required: false
+        default: 'New release'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Debug Event
+      run: |
+        echo "=== DEBUG INFORMATION ==="
+        echo "Event name: ${{ github.event_name }}"
+        echo "Event action: ${{ github.event.action }}"
+        echo "Repository dispatch type: ${{ github.event.client_payload }}"
+        echo "All event data: ${{ toJson(github.event) }}"
+        
+    - name: Set Variables
+      id: vars
+      run: |
+        if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+          echo "source_repo=${{ github.event.client_payload.source_repo }}" >> $GITHUB_OUTPUT
+          echo "version=${{ github.event.client_payload.version }}" >> $GITHUB_OUTPUT  
+          echo "notes=${{ github.event.client_payload.notes }}" >> $GITHUB_OUTPUT
+        else
+          echo "source_repo=${{ github.event.inputs.source_repo }}" >> $GITHUB_OUTPUT
+          echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          echo "notes=${{ github.event.inputs.notes }}" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Show Variables
+      run: |
+        echo "Source repo: ${{ steps.vars.outputs.source_repo }}"
+        echo "Version: ${{ steps.vars.outputs.version }}"
+        echo "Notes: ${{ steps.vars.outputs.notes }}"
+        
+    - name: Checkout private repo
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ steps.vars.outputs.source_repo }}
+        token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        
+    - name: Install dependencies
+      working-directory: dharanServicePlayStoreVersion - Copy
+      run: npm install --legacy-peer-deps
+      
+    - name: Build app
+      working-directory: dharanServicePlayStoreVersion - Copy
+      run: npm run build
+      
+    - name: Create dist.zip
+      run: |
+        cd "dharanServicePlayStoreVersion - Copy/dist"
+        zip -r ../../dist.zip .
+        cd ../..
+        echo "Created dist.zip:"
+        ls -lh dist.zip
+        
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ steps.vars.outputs.version }}
+        name: Release v${{ steps.vars.outputs.version }}
+        body: ${{ steps.vars.outputs.notes }}
+        files: dist.zip
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
